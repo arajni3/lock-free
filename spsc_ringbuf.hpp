@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <cstring>
 
-#define ALIGNMENT 128
+#define ALIGNMENT 64
 
 typedef uint16_t size_type; // allows holding up to 64k simultaneous entries
 
