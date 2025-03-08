@@ -141,7 +141,7 @@ struct mpsc_ringbuf {
                 size_prod.fetch_add(n_set, std::memory_order_relaxed);
                 std::memcpy(q + start_tail, new_data + num_produced, sizeof(T) * n_set);
                 num_produced += n_set;
-                // Now these entries are actually consumed. We need only one total store fence, which is provided at the end below.
+                // Now these entries are actually consumed. We need only one store fence in total, which is provided at the end below.
             }
         } while (num_produced < size);
 
