@@ -98,12 +98,12 @@ struct mpsc_ringbuf {
                 if (prod_size == capacity) { break; } // could not find free space
             }
 
-            uint8_t idx, bits, n_set, fake_set;
+            uint8_t idx, bits, n_set, premature_set;
             size_type entries_crossed = 0;
             // load head only once
             head_val = head.load(std::memory_order_relaxed);
-            /* first reserve space in competition against other producers by CAS-ing unconsumed bits to consumed (fake consumed so other 
-            producers don't touch those slots), then make those fake consumed bits consumed again to publish them to the consumer
+            /* first reserve space in competition against other producers by CAS-ing unconsumed bits to consumed (prematurely consumed so other 
+            producers don't touch those slots)
             */
             do {
                 start_tail = (prod_size - head_val) & (capacity - 1);
@@ -117,7 +117,7 @@ struct mpsc_ringbuf {
                 uint8_t mask = ((1 << j1) - (1 << j2)) | (1 << j1);
                 bits = unconsumed_bitset[idx].load(std::memory_order_relaxed);
 
-                /* count the leading unconsumed (zero) bits in [j2, j1] by counting the leading zeroes in the 
+                /* count the leading consumed (zero) bits in [j2, j1] by counting the leading zeroes in the 
                 bitwise NOT of the NOT-ed mask application
                 */
                 uint8_t res = (bits & ~mask) << off;
@@ -132,15 +132,16 @@ struct mpsc_ringbuf {
                     prod_size += n_move;
                     continue;
                 }      
-                fake_set = (((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1)) << off;          
+                premature_set = (((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1)) << off;          
             } while (entries_crossed < capacity && 
-                !unconsumed_bitset[idx].compare_exchange_weak(bits, bits & ~fake_set, std::memory_order_relaxed, std::memory_order_relaxed));
+                !unconsumed_bitset[idx].compare_exchange_weak(bits, bits & ~premature_set, std::memory_order_relaxed, std::memory_order_relaxed));
     
             if (n_set) {
                 std::atomic_thread_fence(std::memory_order_acquire);
                 size_prod.fetch_add(n_set, std::memory_order_relaxed);
                 std::memcpy(q + start_tail, new_data + num_produced, sizeof(T) * n_set);
                 num_produced += n_set;
+                // Now these entries are actually consumed. We need only one total store fence, which is provided at the end below.
             }
         } while (num_produced < size);
 
