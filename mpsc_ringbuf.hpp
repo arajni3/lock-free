@@ -23,10 +23,12 @@ struct mpsc_ringbuf {
     */
     T* q = nullptr;
 
-    // bit array of packed words to minimize atomics and provide SIMD at the cost of sharing, where set bits denote valid, unconsumed entries
+    /* bit array of packed words to minimize atomics and provide SIMD at the cost of sharing, where set bits 
+    in the unconsumed bitset denote valid, unconsumed entries and the reserved bitset holds reserved entries amongst producers.
+    */
     struct alignas(ALIGNMENT) {
         std::atomic<uint8_t> __bits;
-    } *unconsumed_bitset = nullptr;
+    } *unconsumed_bitset = nullptr, *reserved_bitset = nullptr;
 
     alignas(ALIGNMENT) std::atomic<size_type> global_size{0}; // global published size
     alignas(ALIGNMENT) std::atomic<size_type> head{0};
@@ -62,8 +64,10 @@ struct mpsc_ringbuf {
             }
         }
         unconsumed_bitset = (std::remove_reference_t<decltype(*unconsumed_bitset)>*)std::aligned_alloc(ALIGNMENT, (8 + capacity - 1) >> 3);
+        reserved_bitset = (std::remove_reference_t<decltype(*reserved_bitset)>*)std::aligned_alloc(ALIGNMENT, (8 + capacity - 1) >> 3);
         for (size_type i = 0; i < (8 + capacity - 1) >> 3; ++i) {
             unconsumed_bitset[i].__bits.store(0, std::memory_order_relaxed);
+            reserved_bitset[i].__bits.store(0, std::memory_order_relaxed);
         }
         std::atomic_thread_fence(std::memory_order_release);
     }
@@ -98,12 +102,12 @@ struct mpsc_ringbuf {
                 if (prod_size == capacity) { break; } // could not find free space
             }
 
-            uint8_t idx, bits, n_set, premature_set;
+            uint8_t idx, bits, n_set, reserved_set;
             size_type entries_crossed = 0;
             // load head only once
             head_val = head.load(std::memory_order_relaxed);
-            /* first reserve space in competition against other producers by CAS-ing unconsumed bits to consumed (prematurely consumed so other 
-            producers don't touch those slots)
+            /* first reserve space in competition against other producers by CAS-ing unreserved bits to reserved wherever those 
+            entries are also unconsumed
             */
             do {
                 start_tail = (prod_size - head_val) & (capacity - 1);
@@ -115,13 +119,13 @@ struct mpsc_ringbuf {
                 j2 = j1 - std::min(size_type(start_tail + size - num_produced), j1);
                 // get the bits in [j2, j1]
                 uint8_t mask = ((1 << j1) - (1 << j2)) | (1 << j1);
-                bits = unconsumed_bitset[idx].load(std::memory_order_relaxed);
+                bits = reserved_bitset[idx].load(std::memory_order_relaxed);
 
-                /* count the leading consumed (zero) bits in [j2, j1] by counting the leading zeroes in the 
+                /* count the leading unreserved (zero) bits in [j2, j1] by counting the leading zeroes in the 
                 bitwise NOT of the NOT-ed mask application
                 */
-                uint8_t res = (bits & ~mask) << off;
-                uint8_t rev_mask = ~res;
+                uint8_t res = (bits & ~mask) << off, rev_mask;
+                rev_mask = ~res;
                 n_set = rev_mask ? __builtin_clz(rev_mask) : 8;
 
                 /* In this case, there are no free entries in this range. Move to the right of it.
@@ -131,21 +135,50 @@ struct mpsc_ringbuf {
                     entries_crossed += n_move;
                     prod_size += n_move;
                     continue;
-                }      
-                premature_set = (((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1)) << off;          
+                } 
+                reserved_set = ((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1);      
+
+                // Check that these entries are consumed (unset).
+                uint8_t uncons_bits = unconsumed_bitset[idx].load(std::memory_order_relaxed);
+                /* If not all these entries are consumed, then, since this is a FIFO queue and the producers never lag behind the consumer 
+                in unconsumed entries, it means that some of the leading entries were unconsumed (set).
+                */
+                uint8_t uncons_unresv_bits = uncons_bits & reserved_set;
+                res = uncons_unresv_bits << off;
+                rev_mask = ~res;
+                // Avoid these leading entries.
+                uint8_t n_set_avoid = rev_mask ? __builtin_clz(rev_mask) : 8;
+                n_set -= n_set_avoid;
+
+                /* In this case, there are no free entries in this range. Move to the right of it.
+                */
+                if (n_set == 0) { 
+                    uint8_t n_move = j1 - j2 + 1;
+                    entries_crossed += n_move;
+                    prod_size += n_move;
+                    continue;
+                }
+
+                prod_size += n_set_avoid;
+                // Recompute the tail to avoid these leading entries in case of success below.
+                start_tail = (start_tail + n_set_avoid) & (capacity - 1);
+                mask = ((1 << j1) - (1 << (j1 - n_set_avoid - 1))) | (1 << j1);
+                reserved_set &= ~mask;
+
             } while (entries_crossed < capacity && 
-                !unconsumed_bitset[idx].compare_exchange_weak(bits, bits | premature_set, std::memory_order_relaxed, std::memory_order_relaxed));
+                !reserved_bitset[idx].compare_exchange_weak(bits, bits | reserved_set, std::memory_order_relaxed, std::memory_order_relaxed));
     
             if (n_set) {
                 std::atomic_thread_fence(std::memory_order_acquire);
                 size_prod.fetch_add(n_set, std::memory_order_relaxed);
                 std::memcpy(q + start_tail, new_data + num_produced, sizeof(T) * n_set);
                 num_produced += n_set;
-                // Now these entries are actually consumed. We need only one store fence in total, which is provided at the end below.
+                // Now mark these entries as unconsumed (equivalent to a bitwise OR since these bits were unset).
+                unconsumed_bitset[idx].fetch_add(reserved_set, std::memory_order_release);
             }
         } while (num_produced < size);
 
-        if (num_produced) { global_size.fetch_add(num_produced, std::memory_order_release); }
+        if (num_produced) { global_size.fetch_add(num_produced, std::memory_order_relaxed); } // store fences provided above
 
         return num_produced;
     }
