@@ -134,7 +134,7 @@ struct mpsc_ringbuf {
                 }      
                 premature_set = (((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1)) << off;          
             } while (entries_crossed < capacity && 
-                !unconsumed_bitset[idx].compare_exchange_weak(bits, bits & ~premature_set, std::memory_order_relaxed, std::memory_order_relaxed));
+                !unconsumed_bitset[idx].compare_exchange_weak(bits, bits | premature_set, std::memory_order_relaxed, std::memory_order_relaxed));
     
             if (n_set) {
                 std::atomic_thread_fence(std::memory_order_acquire);
