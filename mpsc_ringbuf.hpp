@@ -12,7 +12,7 @@
 
 typedef uint16_t size_type; // allows holding up to 64k simultaneous entries
 
-// A lock-free (still wait-free for the consumer!) ring buffer, optimized for the consumer using local caching and lazy updates.
+// A lock-free (still wait-free for the consumer!) ring buffer, optimized for the consumer using one-sided caching and lazy updates.
 template<typename T, size_type capacity>
 struct mpsc_ringbuf {
     static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
