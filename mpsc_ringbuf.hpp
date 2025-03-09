@@ -268,9 +268,7 @@ struct mpsc_ringbuf {
 
             size_cons -= num_consumed;
 
-            // Exploit vectorization by splitting the end of the ring buffer and the beginning into two separate cases.
             head_cons = (head_cons + num_consumed) & (capacity - 1);
-
             head.store(head_cons, std::memory_order_release);
         } else {
             size_type correct_size = global_size.load(std::memory_order_relaxed);
@@ -372,9 +370,7 @@ struct mpsc_ringbuf {
 
                 size_cons -= num_consumed;
 
-                // Exploit vectorization by splitting the end of the ring buffer and the beginning into two separate cases.
                 head_cons = (head_cons + num_consumed) & (capacity - 1);
-
                 head.store(head_cons, std::memory_order_release);
              }
         }
