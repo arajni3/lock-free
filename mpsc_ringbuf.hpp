@@ -180,7 +180,8 @@ struct mpsc_ringbuf {
             }
         } while (num_produced < size);
 
-        if (num_produced) { global_size.fetch_add(num_produced, std::memory_order_relaxed); } // store fences provided above
+        // Use a store fence since the compiler may try to be smart and reorder this knowing that num_produced never decreases
+        if (num_produced) { global_size.fetch_add(num_produced, std::memory_order_release); }
 
         return num_produced;
     }
