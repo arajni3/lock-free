@@ -215,9 +215,13 @@ struct mpsc_ringbuf {
                 if (n_set == 0) { break; }
                 i += n_set;
 
+                // consume these entries before marking them as consumed
+                std::atomic_thread_fence(std::memory_order_acquire);
+                std::memcpy(ret_data + i - n_set, q + i - n_set, sizeof(T) * n_set);
+
                 // mark all these unconsumed entries as consumed via a subtraction (equivalent to a NOT since they were all set)
                 uint8_t consumed_bits = (((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1)) << off;
-                unconsumed_bitset[i].__bits.fetch_sub(consumed_bits, std::memory_order_relaxed);
+                unconsumed_bitset[i].__bits.fetch_sub(consumed_bits, std::memory_order_release);
             }
             size_type suffix_consumed = i - unwrapped_head;
             if (suffix_consumed == old_num_end) // process prefix
@@ -245,9 +249,13 @@ struct mpsc_ringbuf {
                     if (n_set == 0) { break; }
                     i += n_set;
 
+                    // consume these entries before marking them as consumed
+                    std::atomic_thread_fence(std::memory_order_acquire);
+                    std::memcpy(ret_data + + num_consumed + i - n_set, q + num_consumed + i - n_set, sizeof(T) * n_set);
+
                     // mark all these unconsumed entries as consumed via a subtraction (equivalent to a NOT since they were all set)
                     uint8_t consumed_bits = (((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1)) << off;
-                    unconsumed_bitset[i].__bits.fetch_sub(consumed_bits, std::memory_order_relaxed);
+                    unconsumed_bitset[i].__bits.fetch_sub(consumed_bits, std::memory_order_release);
                 }
                 uint8_t prefix_consumed = i;
 
@@ -262,9 +270,6 @@ struct mpsc_ringbuf {
 
             // Exploit vectorization by splitting the end of the ring buffer and the beginning into two separate cases.
             head_cons = (head_cons + num_consumed) & (capacity - 1);
-            const size_type num_end = std::min(num_consumed, size_type(capacity - unwrapped_head));
-            std::memcpy(ret_data, q + unwrapped_head, sizeof(T) * num_end);
-            std::memcpy(ret_data + num_end, q, sizeof(T) * (num_consumed - num_end));
 
             head.store(head_cons, std::memory_order_release);
         } else {
@@ -314,9 +319,13 @@ struct mpsc_ringbuf {
                     if (n_set == 0) { break; }
                     i += n_set;
 
+                    // consume these entries before marking them as consumed
+                    std::atomic_thread_fence(std::memory_order_acquire);
+                    std::memcpy(ret_data + i - n_set, q + i - n_set, sizeof(T) * n_set);
+
                     // mark all these unconsumed entries as consumed via a subtraction (equivalent to a NOT since they were all set)
                     uint8_t consumed_bits = (((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1)) << off;
-                    unconsumed_bitset[i].__bits.fetch_sub(consumed_bits, std::memory_order_relaxed);
+                    unconsumed_bitset[i].__bits.fetch_sub(consumed_bits, std::memory_order_release);
                 }
                 size_type suffix_consumed = i - unwrapped_head;
                 if (suffix_consumed == old_num_end) // process prefix
@@ -344,9 +353,13 @@ struct mpsc_ringbuf {
                         if (n_set == 0) { break; }
                         i += n_set;
 
+                        // consume these entries before marking them as consumed
+                        std::atomic_thread_fence(std::memory_order_acquire);
+                        std::memcpy(ret_data + + num_consumed + i - n_set, q + num_consumed + i - n_set, sizeof(T) * n_set);
+
                         // mark all these unconsumed entries as consumed via a subtraction (equivalent to a NOT since they were all set)
                         uint8_t consumed_bits = (((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1)) << off;
-                        unconsumed_bitset[i].__bits.fetch_sub(consumed_bits, std::memory_order_relaxed);
+                        unconsumed_bitset[i].__bits.fetch_sub(consumed_bits, std::memory_order_release);
                     }
                     uint8_t prefix_consumed = i;
     
@@ -361,9 +374,6 @@ struct mpsc_ringbuf {
 
                 // Exploit vectorization by splitting the end of the ring buffer and the beginning into two separate cases.
                 head_cons = (head_cons + num_consumed) & (capacity - 1);
-                const size_type num_end = std::min(num_consumed, size_type(capacity - unwrapped_head));
-                std::memcpy(ret_data, q + unwrapped_head, sizeof(T) * num_end);
-                std::memcpy(ret_data + num_end, q, sizeof(T) * (num_consumed - num_end));
 
                 head.store(head_cons, std::memory_order_release);
              }
