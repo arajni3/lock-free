@@ -77,8 +77,8 @@ struct mpsc_ringbuf {
             for (size_type i = 0; i < capacity; ++i) { (&q[i])->~T(); }
         }
         std::free(q);
-        std::free(unconsumed_bitset);
-        std::free(reserved_bitset);
+        delete unconsumed_bitset;
+        delete reserved_bitset;
     }
 
     size_type produce(T& new_data) noexcept { return produce_burst(&new_data, 1); }
