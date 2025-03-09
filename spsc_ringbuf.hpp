@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <cstring>
 
-#define ALIGNMENT 64
+#define SPSC_ALIGNMENT 64
 
 typedef uint16_t size_type; // allows holding up to 64k simultaneous entries
 
@@ -25,7 +25,7 @@ struct spsc_ringbuf {
 
     void create_ring_buf() {
         // the underlying array should be aligned at the beginning to avoid false sharing as well as to enable certain SIMD vectorizations
-        q = (T*)std::aligned_alloc(ALIGNMENT, sizeof(T) * capacity);
+        q = (T*)std::aligned_alloc(SPSC_ALIGNMENT, sizeof(T) * capacity);
         if (q) {
             if constexpr (std::is_class_v<T>) {
                 for (size_type i = 0; i < capacity; ++i) { new (&q[i]) T(); }
@@ -40,9 +40,9 @@ struct spsc_ringbuf {
         std::free(q);
     }
 
-    alignas(ALIGNMENT) std::atomic<size_type> global_size{0}; // global published size
-    alignas(ALIGNMENT) std::atomic<size_type> head{0};
-    struct alignas(ALIGNMENT) {
+    alignas(SPSC_ALIGNMENT) std::atomic<size_type> global_size{0}; // global published size
+    alignas(SPSC_ALIGNMENT) std::atomic<size_type> head{0};
+    struct alignas(SPSC_ALIGNMENT) {
         /* Optimization: Avoid atomics for the producer via double caching.
         When size_prod < capacity - 1, we know there are at least capacity - size_prod free slots in the queue, which will not be garbage-
         read by the consumer (the consumer at worst lags behind recent pushes, never ahead). The atomic head is then read, which will result 
@@ -59,7 +59,7 @@ struct spsc_ringbuf {
         size_type size_prod = 0, head_prod = 0;
     };
 
-    struct alignas(ALIGNMENT) {
+    struct alignas(SPSC_ALIGNMENT) {
         /* Optimization: Avoid atomics for the consumer via double caching and lazy updates.
         When size_cons > 0, we know there are >= size_cons elements in the queue and so does the producer, so they will not be mutated by 
         the producer, and we can avoid reloading the global size by not reloading until size_cons == 0. At that point, we reload the global size 

@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <cstring>
 
-#define ALIGNMENT 64
+#define MPSC_ALIGNMENT 64
 
 typedef uint16_t size_type; // allows holding up to 64k simultaneous entries
 
@@ -26,14 +26,14 @@ struct mpsc_ringbuf {
     /* bit array of packed words to minimize atomics and provide SIMD at the cost of sharing, where set bits 
     in the unconsumed bitset denote valid, unconsumed entries and the reserved bitset holds reserved entries amongst producers.
     */
-    struct alignas(ALIGNMENT) {
+    struct alignas(MPSC_ALIGNMENT) {
         std::atomic<uint8_t> __bits;
     } *unconsumed_bitset = nullptr, *reserved_bitset = nullptr;
 
-    alignas(ALIGNMENT) std::atomic<size_type> global_size{0}; // global published size
-    alignas(ALIGNMENT) std::atomic<size_type> head{0};
+    alignas(MPSC_ALIGNMENT) std::atomic<size_type> global_size{0}; // global published size
+    alignas(MPSC_ALIGNMENT) std::atomic<size_type> head{0};
 
-    struct alignas(ALIGNMENT) {
+    struct alignas(MPSC_ALIGNMENT) {
         /* Optimization: Avoid atomics for the consumer via double caching and lazy updates.
         When size_cons > 0, we know there are >= size_cons elements in the queue and so does the producer, so they will not be mutated by 
         the producer, and we can avoid reloading the global size by not reloading until size_cons == 0. At that point, we reload the global size 
@@ -53,18 +53,18 @@ struct mpsc_ringbuf {
 
     /* Unlike the single-producer case, producers cannot cache locally as they must share a common state.
     */
-    alignas(ALIGNMENT) std::atomic<size_type> size_prod{0};
+    alignas(MPSC_ALIGNMENT) std::atomic<size_type> size_prod{0};
     
     void create_ring_buf() {
         // the underlying array should be aligned at the beginning to avoid false sharing as well as to enable certain SIMD vectorizations
-        q = (T*)std::aligned_alloc(ALIGNMENT, sizeof(T) * capacity);
+        q = (T*)std::aligned_alloc(MPSC_ALIGNMENT, sizeof(T) * capacity);
         if (q) {
             if constexpr (std::is_class_v<T>) {
                 for (size_type i = 0; i < capacity; ++i) { new (&q[i]) T(); }
             }
         }
-        unconsumed_bitset = (std::remove_reference_t<decltype(*unconsumed_bitset)>*)std::aligned_alloc(ALIGNMENT, (8 + capacity - 1) >> 3);
-        reserved_bitset = (std::remove_reference_t<decltype(*reserved_bitset)>*)std::aligned_alloc(ALIGNMENT, (8 + capacity - 1) >> 3);
+        unconsumed_bitset = (std::remove_reference_t<decltype(*unconsumed_bitset)>*)std::aligned_alloc(MPSC_ALIGNMENT, (8 + capacity - 1) >> 3);
+        reserved_bitset = (std::remove_reference_t<decltype(*reserved_bitset)>*)std::aligned_alloc(MPSC_ALIGNMENT, (8 + capacity - 1) >> 3);
         for (size_type i = 0; i < (8 + capacity - 1) >> 3; ++i) {
             unconsumed_bitset[i].__bits.store(0, std::memory_order_relaxed);
             reserved_bitset[i].__bits.store(0, std::memory_order_relaxed);
