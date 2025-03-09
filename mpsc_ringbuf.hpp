@@ -222,9 +222,14 @@ struct mpsc_ringbuf {
                 std::atomic_thread_fence(std::memory_order_acquire);
                 std::memcpy(ret_data + i - n_set, q + i - n_set, sizeof(T) * n_set);
 
-                // mark all these unconsumed entries as consumed via a subtraction (equivalent to a NOT since they were all set)
+                // Mark all these unconsumed entries as consumed via a subtraction (equivalent to a NOT since they were all set).
                 uint8_t consumed_bits = (((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1)) << off;
-                unconsumed_bitset[i].__bits.fetch_sub(consumed_bits, std::memory_order_release);
+                /* Also, all unconsumed entries are reserved by producers. We could have producers unset them after finishing 
+                production, but they already have a very large number of atomics. So the consumer should do the job of 
+                unreserving these entries, specifically once it has finished consuming them.
+                */
+                reserved_bitset[idx].__bits.fetch_sub(consumed_bits, std::memory_order_relaxed);
+                unconsumed_bitset[idx].__bits.fetch_sub(consumed_bits, std::memory_order_release);
             }
             size_type suffix_consumed = i - unwrapped_head;
             if (suffix_consumed == old_num_end) // process prefix
@@ -256,9 +261,14 @@ struct mpsc_ringbuf {
                     std::atomic_thread_fence(std::memory_order_acquire);
                     std::memcpy(ret_data + + num_consumed + i - n_set, q + num_consumed + i - n_set, sizeof(T) * n_set);
 
-                    // mark all these unconsumed entries as consumed via a subtraction (equivalent to a NOT since they were all set)
+                    // Mark all these unconsumed entries as consumed via a subtraction (equivalent to a NOT since they were all set).
                     uint8_t consumed_bits = (((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1)) << off;
-                    unconsumed_bitset[i].__bits.fetch_sub(consumed_bits, std::memory_order_release);
+                    /* Also, all unconsumed entries are reserved by producers. We could have producers unset them after finishing 
+                    production, but they already have a very large number of atomics. So the consumer should do the job of 
+                    unreserving these entries, specifically once it has finished consuming them.
+                    */
+                    reserved_bitset[idx].__bits.fetch_sub(consumed_bits, std::memory_order_relaxed);
+                    unconsumed_bitset[idx].__bits.fetch_sub(consumed_bits, std::memory_order_release);
                 }
                 uint8_t prefix_consumed = i;
 
@@ -324,9 +334,14 @@ struct mpsc_ringbuf {
                     std::atomic_thread_fence(std::memory_order_acquire);
                     std::memcpy(ret_data + i - n_set, q + i - n_set, sizeof(T) * n_set);
 
-                    // mark all these unconsumed entries as consumed via a subtraction (equivalent to a NOT since they were all set)
+                    // Mark all these unconsumed entries as consumed via a subtraction (equivalent to a NOT since they were all set).
                     uint8_t consumed_bits = (((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1)) << off;
-                    unconsumed_bitset[i].__bits.fetch_sub(consumed_bits, std::memory_order_release);
+                    /* Also, all unconsumed entries are reserved by producers. We could have producers unset them after finishing 
+                    production, but they already have a very large number of atomics. So the consumer should do the job of 
+                    unreserving these entries, specifically once it has finished consuming them.
+                    */
+                    reserved_bitset[idx].__bits.fetch_sub(consumed_bits, std::memory_order_relaxed);
+                    unconsumed_bitset[idx].__bits.fetch_sub(consumed_bits, std::memory_order_release);
                 }
                 size_type suffix_consumed = i - unwrapped_head;
                 if (suffix_consumed == old_num_end) // process prefix
@@ -358,9 +373,14 @@ struct mpsc_ringbuf {
                         std::atomic_thread_fence(std::memory_order_acquire);
                         std::memcpy(ret_data + + num_consumed + i - n_set, q + num_consumed + i - n_set, sizeof(T) * n_set);
 
-                        // mark all these unconsumed entries as consumed via a subtraction (equivalent to a NOT since they were all set)
+                        // Mark all these unconsumed entries as consumed via a subtraction (equivalent to a NOT since they were all set).
                         uint8_t consumed_bits = (((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1)) << off;
-                        unconsumed_bitset[i].__bits.fetch_sub(consumed_bits, std::memory_order_release);
+                        /* Also, all unconsumed entries are reserved by producers. We could have producers unset them after finishing 
+                        production, but they already have a very large number of atomics. So the consumer should do the job of 
+                        unreserving these entries, specifically once it has finished consuming them.
+                        */
+                        reserved_bitset[idx].__bits.fetch_sub(consumed_bits, std::memory_order_relaxed);
+                        unconsumed_bitset[idx].__bits.fetch_sub(consumed_bits, std::memory_order_release);
                     }
                     uint8_t prefix_consumed = i;
     
