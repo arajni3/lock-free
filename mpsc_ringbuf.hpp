@@ -171,7 +171,7 @@ struct mpsc_ringbuf {
                 !reserved_bitset[idx].compare_exchange_weak(bits, bits | reserved_set, std::memory_order_relaxed, std::memory_order_relaxed));
     
             if (n_set) {
-                std::atomic_thread_fence(std::memory_order_acquire);
+                // explicit dependency on n_set which is itself dependent on the runtime loop above, no load fence needed here
                 size_prod.fetch_add(n_set, std::memory_order_relaxed);
                 std::memcpy(q + start_tail, new_data + num_produced, sizeof(T) * n_set);
                 num_produced += n_set;
@@ -180,8 +180,8 @@ struct mpsc_ringbuf {
             }
         } while (num_produced < size);
 
-        // Use a store fence since the compiler may try to be smart and reorder this knowing that num_produced never decreases
-        if (num_produced) { global_size.fetch_add(num_produced, std::memory_order_release); }
+        // Explicit dependency on the runtime loop above, relaxed ordering suffices
+        if (num_produced) { global_size.fetch_add(num_produced, std::memory_order_relaxed); }
 
         return num_produced;
     }
