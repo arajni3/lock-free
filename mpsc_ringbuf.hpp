@@ -7,7 +7,7 @@
 #include <cstdlib>
 #include <type_traits>
 #include <cstring>
-
+ 
 #define MPSC_ALIGNMENT 64
 
 typedef uint16_t size_type; // allows holding up to 64k simultaneous entries
@@ -99,6 +99,8 @@ struct mpsc_ringbuf {
                 do {
                     new_prod_size = size_prod.load(std::memory_order_relaxed);
                     global_val = global_size.load(std::memory_order_relaxed);
+                    // optimization: don't try CAS if the state isn't going to change
+                    if new_prod_size == global_val { break; }
                 } while (!size_prod.compare_exchange_weak(new_prod_size, global_val, std::memory_order_relaxed, std::memory_order_relaxed));
                 prod_size = new_prod_size;
                 if (prod_size == capacity) { break; } // could not find free space
