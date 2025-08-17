@@ -121,7 +121,7 @@ struct mpsc_ringbuf {
                 j2 = j1 - std::min(size_type(start_tail + size - num_produced), j1);
                 // get the bits in [j2, j1]
                 uint8_t mask = ((1 << j1) - (1 << j2)) | (1 << j1);
-                bits = reserved_bitset[idx].load(std::memory_order_relaxed);
+                bits = reserved_bitset[idx].__bits.load(std::memory_order_relaxed);
 
                 /* count the leading unreserved (zero) bits in [j2, j1] by counting the leading zeroes in the 
                 bitwise NOT of the NOT-ed mask application
@@ -141,7 +141,7 @@ struct mpsc_ringbuf {
                 reserved_set = ((1 << j1) - (1 << (j1 - n_set - 1))) | (1 << j1);      
 
                 // Check that these entries are consumed (unset).
-                uint8_t uncons_bits = unconsumed_bitset[idx].load(std::memory_order_relaxed);
+                uint8_t uncons_bits = unconsumed_bitset[idx].__bits.load(std::memory_order_relaxed);
                 /* If not all these entries are consumed, then, since this is a FIFO queue and the producers never lag behind the consumer 
                 in unconsumed entries, it means that some of the leading entries were unconsumed (set).
                 */
@@ -276,7 +276,7 @@ struct mpsc_ringbuf {
             } else // the whole suffix was definitely not consumed, don't check the start of the ring buffer array
             {
                 num_consumed = suffix_consumed;
-                if (num_consumed == 0) { return false; }
+                if (num_consumed == 0) { return 0; }
             }
 
             size_cons -= num_consumed;
@@ -388,7 +388,7 @@ struct mpsc_ringbuf {
                 } else // the whole suffix was definitely not consumed, don't check the start of the ring buffer array
                 {
                     num_consumed = suffix_consumed;
-                    if (num_consumed == 0) { return false; }
+                    if (num_consumed == 0) { return 0; }
                 }
 
                 size_cons -= num_consumed;
